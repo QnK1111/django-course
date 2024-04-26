@@ -1,12 +1,18 @@
 from django.shortcuts import render, redirect
 from .models import Profile
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.forms import UserCreationForm
 from .models import User
 from django.contrib import messages
+from .forms import CustomUserCreationForm
+from django.contrib.auth.decorators import login_required
+from .forms import ProfileForm, SkillForm
 
 # Create your views here.
 
 def loginUser(request):
+    page = 'login'
+    context = {'page' : page}
     
     if request.user.is_authenticated:
         return redirect('profiles')
@@ -29,12 +35,34 @@ def loginUser(request):
             messages.error(request, "Username or password is incorrect")
 
     
-    return render(request, 'users/login_register.html')
+    return render(request, 'users/login_register.html', context)
 
 def logoutUser(request):
     logout(request)
     messages.success(request, "User logged out")
     return redirect('login')
+
+def registerUser(request):
+    page = 'register'
+    form = CustomUserCreationForm()
+    
+    if request.method == "POST":
+        form = CustomUserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save(commit=False)
+            user.username = user.username.lower()
+            user.save()
+            
+            messages.success(request, "User account was created!")
+            
+            login(request, user)
+            return redirect('edit-account')
+        else:
+            messages.error(request, "An error has occured during registration")
+            
+    
+    context = {'page' : page, 'form' : form} 
+    return render(request, 'users/login_register.html', context)
 
 def profiles(request):
     profiles = Profile.objects.all()
@@ -50,3 +78,59 @@ def userProfile(request, pk):
     context = {'profile' : profile, 'topSkills' : topSkills, 'otherSkills' : otherSkills}
 
     return render(request, "users/user-profile.html", context)
+
+@login_required(login_url='login')
+def userAccount(request):
+    profile = request.user.profile
+    
+    context = {'profile' : profile}
+    return render(request, "users/account.html", context)
+
+@login_required(login_url='login')
+def editAccount(request):
+    profile = request.user.profile
+    form = ProfileForm(instance=profile)
+    
+    if request.method == "POST":
+        form = ProfileForm(request.POST, request.FILES, instance=profile)
+        if form.is_valid():
+            form.save()
+            return redirect('account')
+    
+    
+    context = {'form':form}
+    
+    return render(request, 'users/profile_form.html', context)
+
+@login_required(login_url='login')
+def createSkill(request):
+    profile = request.user.profile
+    form = SkillForm()
+    
+    if request.method == "POST":
+        form = SkillForm(request.POST)
+        if form.is_valid():
+            skill = form.save(commit=False)
+            skill.owner = profile
+            skill.save()
+            return redirect('account')
+    
+    context = {'form':form}
+    
+    return render(request, 'users/skill_form.html', context)
+
+@login_required(login_url='login')
+def updateSkill(request, pk):
+    profile = request.user.profile
+    skill = profile.skill_set.get(id=pk)
+    form = SkillForm(instance=skill)
+    
+    if request.method == "POST":
+        form = SkillForm(request.POST, instance=skill)
+        if form.is_valid():
+            form.save()
+            return redirect('account')
+    
+    context = {'form':form}
+    
+    return render(request, 'users/skill_form.html', context)
